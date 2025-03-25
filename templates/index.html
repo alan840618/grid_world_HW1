@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grid World</title>
+  <style>
+    .grid-container {
+      display: grid;
+      gap: 2px;
+    }
+
+    .cell {
+      width: 50px;
+      height: 50px;
+      border: 1px solid black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .start {
+      background-color: green;
+    }
+
+    .goal {
+      background-color: red;
+    }
+
+    .obstacle {
+      background-color: gray;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Grid World</h2>
+  <p>使用說明：</p>
+  <ul>
+    <li>選擇網格尺寸n (5-9)，然後點擊 "Generate Grid" 生成網格。</li>
+    <li>點擊一個單元格設定起始點（顯示為綠色）。</li>
+    <li>點擊另一個單元格設定終點（顯示為紅色）。</li>
+    <li>點擊其他單元格來設定障礙物（最多可設定 n-2 個，顯示為灰色）。</li>
+    <li>再次點擊已選擇的單元格可以取消選擇。</li>
+    <li>點擊 "Show Actions" 按鈕，在每個單元格內顯示隨機行動方向（↑ ↓ ← →）。</li>
+  </ul>
+  <label for="gridSize">Grid Size (5-9):</label>
+  <input type="number" id="gridSize" min="5" max="9" value="5">
+  <button onclick="generateGrid()">Generate Grid</button>
+  <button onclick="showActions()">Show Actions</button>
+  <button onclick="calculateValues()">Show State Values</button>
+  <br><br>
+  <div id="grid" class="grid-container"></div>
+  <div id="valueTitle" style="display: none;">
+    <h3>Value Function</h3>
+  </div>
+  <div id="valueGrid" class="grid-container value-grid"></div>
+
+  <script>
+    let gridSize = 5;
+    let start = null;
+    let goal = null;
+    let obstacles = [];
+    const actions = ['↑', '↓', '←', '→'];
+
+    function generateGrid() {
+      gridSize = document.getElementById("gridSize").value;
+      if (gridSize > 9 || gridSize < 5) {
+        alert("請輸入5-9之間的數字！");
+        return;
+      }
+      start = null;
+      goal = null;
+      obstacles = [];
+      renderGrid();
+    }
+
+    function renderGrid() {
+      const gridContainer = document.getElementById("grid");
+      gridContainer.innerHTML = "";
+      gridContainer.style.gridTemplateColumns = `repeat(${gridSize}, 50px)`;
+      gridContainer.style.gridTemplateRows = `repeat(${gridSize}, 50px)`;
+
+      for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+          const cell = document.createElement("div");
+          cell.classList.add("cell");
+          cell.dataset.row = i;
+          cell.dataset.col = j;
+          cell.addEventListener("click", () => handleCellClick(cell, i, j));
+          gridContainer.appendChild(cell);
+        }
+      }
+    }
+
+    function handleCellClick(cell, i, j) {
+      if (cell.classList.contains("start")) {
+        cell.classList.remove("start");
+        start = null;
+      } else if (cell.classList.contains("goal")) {
+        cell.classList.remove("goal");
+        goal = null;
+      } else if (cell.classList.contains("obstacle")) {
+        cell.classList.remove("obstacle");
+        obstacles = obstacles.filter(o => o[0] !== i || o[1] !== j);
+      } else {
+        if (!start) {
+          cell.classList.add("start");
+          start = [i, j];
+        } else if (!goal) {
+          cell.classList.add("goal");
+          goal = [i, j];
+        } else if (obstacles.length < gridSize - 2) {
+          cell.classList.add("obstacle");
+          obstacles.push([i, j]);
+        }
+      }
+    }
+    function showActions() {
+      if (!start || !goal || obstacles.length === 0) {
+        alert("請先設定起始點和終點及障礙物！");
+        return;
+      }
+      let cells = document.querySelectorAll(".cell");
+
+      document.querySelectorAll(".cell").forEach(cell => {
+        if (!(cell.classList.contains("goal") || cell.classList.contains("obstacle"))) {
+          const randomAction = actions[Math.floor(Math.random() * actions.length)];
+          cell.textContent = randomAction;
+        }
+      });
+    }
+    function calculateValues() {
+      fetch('/calculate_values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grid_size: gridSize, start: start, goal: goal, obstacles: obstacles })
+      })
+        .then(response => response.json())
+        .then(values => {
+          const valueTitle = document.getElementById('valueTitle');
+          const valueGrid = document.getElementById("valueGrid");
+          valueTitle.style.removeProperty("display");
+          valueGrid.innerHTML = ""; // 清空舊的網格
+          valueGrid.style.gridTemplateColumns = `repeat(${gridSize}, 50px)`;
+          valueGrid.style.gridTemplateRows = `repeat(${gridSize}, 50px)`;
+
+          for (let i = 0; i < gridSize; i++) {
+            for (let j = 0; j < gridSize; j++) {
+              const cell = document.createElement("div");
+              cell.classList.add("cell");
+
+              // 設定與原網格相同的顏色
+              if (start && start[0] === i && start[1] === j) {
+                cell.classList.add("start");
+              } else if (goal && goal[0] === i && goal[1] === j) {
+                cell.classList.add("goal");
+              } else if (obstacles.some(o => o[0] === i && o[1] === j)) {
+                cell.classList.add("obstacle");
+              }
+
+              // 顯示狀態值
+              const valueText = document.createElement("div");
+              valueText.style.fontSize = "12px";
+              valueText.style.color = "blue";
+              valueText.textContent = values[i][j].toFixed(2);
+              if (!cell.classList.contains("obstacle")) {
+                cell.appendChild(valueText);
+              }
+              valueGrid.appendChild(cell);
+            }
+          }
+        });
+    }
+  </script>
+</body>
+
+</html>
